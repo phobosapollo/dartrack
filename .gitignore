@@ -1,0 +1,16 @@
+﻿# CMake build artifacts
+/build/
+/cmake-build-*/
+
+# IDE and editor
+.vscode/
+.idea/
+
+# Debug files
+*.jdebug
+*.jlink
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
