@@ -1,26 +1,25 @@
+
 #ifndef CONTROLTASK_H
 #define CONTROLTASK_H
 
 #include <stdint.h>
 
-// 供 C 中断处理(stm32f4xx_it.c 及 HAL 弱回调)调用的接口
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// 上电初始化: 配置 CAN 过滤器、启动 CAN 与 1kHz 控制定时器
-// 在 main.c 中 MX_XXX_Init() 全部执行完后调用一次
+// 初始化 CAN
 void ControlTaskInit(void);
 
-// 1kHz 控制入口, 在 TIM6 周期中断(HAL_TIM_PeriodElapsedCallback)中调用
-void MainTask(void);
-
-// CAN 接收回调, 在 HAL_CAN_RxFifo0MsgPendingCallback 中调用
-void CanFeedbackCallback(uint32_t std_id, const uint8_t *data);
-
+// TIM6 1kHz 中断调用
 void ControlTaskTick(void);
 
+// main while(1) 中调用
 void ControlTaskRun(void);
+
+// 保留原有接口声明
+void MainTask(void);
+void CanFeedbackCallback(uint32_t std_id, const uint8_t *data);
 
 #ifdef __cplusplus
 }
