@@ -18,6 +18,10 @@ void MainTask(void);
 // CAN 接收回调, 在 HAL_CAN_RxFifo0MsgPendingCallback 中调用
 void CanFeedbackCallback(uint32_t std_id, const uint8_t *data);
 
+void ControlTaskTick(void);
+
+void ControlTaskRun(void);
+
 #ifdef __cplusplus
 }
 #endif

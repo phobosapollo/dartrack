@@ -1,76 +1,134 @@
+
 #include "Gm6020.h"
 
 namespace {
-constexpr float    kPi         = 3.14159265358979323846f;
-constexpr uint16_t kAngleRange = 8192;   // 机械角度一圈 8192
-constexpr float    kRpmToRadS  = (2.0f * kPi) / 60.0f;
-constexpr float    kRawToAmp   = 3.0f / 16384.0f; // 反馈电流 ±16384 对应 ±3A(近似)
+
+constexpr float kPi = 3.14159265358979323846f;
+constexpr uint16_t kAngleRange = 8192;
+constexpr float kRpmToRadS = 2.0f * kPi / 60.0f;
+constexpr float kRawToAmp = 3.0f / 16384.0f;
+
 }
 
 Gm6020::Gm6020(uint8_t id)
-    : id_(id), voltage_(0),
-      raw_angle_(0), raw_vel_rpm_(0), raw_current_(0), raw_temp_(0),
-      full_turns_(0), last_raw_angle_(0) {}
-
-uint32_t Gm6020::rxId() const {
-    return 0x204u + id_;   // 0x205 ~ 0x20B
+    : id_(id),
+      current_command_(0),
+      raw_angle_(0),
+      raw_vel_rpm_(0),
+      raw_current_(0),
+      raw_temp_(0),
+      full_turns_(0),
+      last_raw_angle_(0),
+      angle_initialized_(false)
+{
 }
 
-uint32_t Gm6020::txId() const {
-    return (id_ <= 4) ? 0x1FFu : 0x2FFu;   // 电压控制帧
+uint32_t Gm6020::rxId() const
+{
+    return 0x204u + id_;
 }
 
-void Gm6020::decode(const uint8_t *data) {
-    uint16_t raw = static_cast<uint16_t>((data[0] << 8) | data[1]);
-
-    // 跨零检测: 一圈 8192, 相邻两次采样跳变超过半圈(4096)视为跨过零点
-    int16_t diff = static_cast<int16_t>(raw - last_raw_angle_);
-    if (diff > 4096)        full_turns_--;   // 8191 -> 0, 正向转过一圈
-    else if (diff < -4096)  full_turns_++;   // 0 -> 8191, 反向转过一圈
-
-    last_raw_angle_ = raw;
-    raw_angle_      = raw;
-    raw_vel_rpm_    = static_cast<int16_t>((data[2] << 8) | data[3]);
-    raw_current_    = static_cast<int16_t>((data[4] << 8) | data[5]);
-    raw_temp_       = data[6];
+uint32_t Gm6020::txId() const
+{
+    // Current control protocol (to be verified)
+    return (id_ <= 4) ? 0x1FEu : 0x2FEu;
 }
 
-float Gm6020::angle() const {
-    // 累计角度 = 整圈数 * 一圈 + 当前原始角度, 再换算成弧度
-    return (static_cast<float>(full_turns_) * kAngleRange + raw_angle_)
+void Gm6020::decode(const uint8_t *data)
+{
+    uint16_t raw = static_cast<uint16_t>(
+        (static_cast<uint16_t>(data[0]) << 8) | data[1]
+    );
+
+    if (!angle_initialized_)
+    {
+        last_raw_angle_ = raw;
+        angle_initialized_ = true;
+    }
+    else
+    {
+        int32_t diff = static_cast<int32_t>(raw)
+                     - static_cast<int32_t>(last_raw_angle_);
+
+        if (diff > 4096)
+        {
+            full_turns_--;
+        }
+        else if (diff < -4096)
+        {
+            full_turns_++;
+        }
+
+        last_raw_angle_ = raw;
+    }
+
+    raw_angle_ = raw;
+
+    raw_vel_rpm_ = static_cast<int16_t>(
+        (static_cast<uint16_t>(data[2]) << 8) | data[3]
+    );
+
+    raw_current_ = static_cast<int16_t>(
+        (static_cast<uint16_t>(data[4]) << 8) | data[5]
+    );
+
+    raw_temp_ = data[6];
+}
+
+float Gm6020::angle() const
+{
+    return (static_cast<float>(full_turns_) * kAngleRange
+            + static_cast<float>(raw_angle_))
            * (2.0f * kPi / kAngleRange);
 }
 
-float Gm6020::vel() const {
-    return raw_vel_rpm_ * kRpmToRadS;   // rpm -> rad/s
+float Gm6020::vel() const
+{
+    return static_cast<float>(raw_vel_rpm_) * kRpmToRadS;
 }
 
-float Gm6020::current() const {
-    return raw_current_ * kRawToAmp;
+float Gm6020::current() const
+{
+    return static_cast<float>(raw_current_) * kRawToAmp;
 }
 
-float Gm6020::temp() const {
+float Gm6020::temp() const
+{
     return static_cast<float>(raw_temp_);
 }
 
-int16_t Gm6020::velRpm() const {
+int16_t Gm6020::velRpm() const
+{
     return raw_vel_rpm_;
 }
 
-void Gm6020::setVoltage(int16_t v) {
-    voltage_ = v;
+void Gm6020::setCurrent(int16_t current)
+{
+    current_command_ = current;
 }
 
-int16_t Gm6020::voltage() const {
-    return voltage_;
+int16_t Gm6020::currentCommand() const
+{
+    return current_command_;
 }
 
-void Gm6020::encode(uint8_t *data) const {
-    // 电压控制帧数据布局:
-    //   0x1FF: ID 1->[0,1]  2->[2,3]  3->[4,5]  4->[6,7]
-    //   0x2FF: ID 5->[0,1]  6->[2,3]  7->[4,5]
-    uint8_t index = (id_ <= 4) ? static_cast<uint8_t>((id_ - 1) * 2)
-                               : static_cast<uint8_t>((id_ - 5) * 2);
-    data[index]     = static_cast<uint8_t>((voltage_ >> 8) & 0xFF);
-    data[index + 1] = static_cast<uint8_t>(voltage_ & 0xFF);
+void Gm6020::encode(uint8_t *data) const
+{
+    // Caller must provide an 8-byte initialized buffer.
+    // ID 1-4: DATA[0:1], [2:3], [4:5], [6:7]
+    // ID 5-7: DATA[0:1], [2:3], [4:5]
+
+    if (id_ < 1 || id_ > 7 || data == nullptr)
+    {
+        return;
+    }
+
+    uint8_t index = (id_ <= 4)
+        ? static_cast<uint8_t>((id_ - 1) * 2)
+        : static_cast<uint8_t>((id_ - 5) * 2);
+
+    uint16_t raw = static_cast<uint16_t>(current_command_);
+
+    data[index] = static_cast<uint8_t>((raw >> 8) & 0xFF);
+    data[index + 1] = static_cast<uint8_t>(raw & 0xFF);
 }

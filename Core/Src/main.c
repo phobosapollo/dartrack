@@ -121,6 +121,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    ControlTaskRun();
   }
   /* USER CODE END 3 */
 }
@@ -178,6 +179,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (htim->Instance == TIM6)
     {
         debug_tim6_count++;
+        ControlTaskTick();
     }
 }
 

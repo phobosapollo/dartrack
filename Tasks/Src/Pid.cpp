@@ -1,7 +1,7 @@
 #include "Pid.h"
 
 namespace {
-constexpr float kSampleTime = 0.001f;   // 1kHz 控制周期
+constexpr float kSampleTime = 0.01f;   // 1kHz 控制周期
 }
 
 Pid::Pid(float kp, float ki, float kd, float out_max, float out_min)
