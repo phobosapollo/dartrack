@@ -13,8 +13,11 @@ constexpr float SINE_AMPLITUDE = 50.0f;
 constexpr float SINE_PERIOD = 10.0f;
 
 // 位置正弦参数，单位 rad
-constexpr float POSITION_AMPLITUDE = 1.0f;
+constexpr float POSITION_AMPLITUDE = 4.0f;
 constexpr float POSITION_PERIOD = 10.0f;
+
+// 位置环最终目标速度限幅，单位 rpm
+constexpr float POSITION_SPEED_LIMIT = 50.0f;
 
 // 0: 速度模式
 // 1: 位置模式
@@ -33,7 +36,7 @@ static Pid speed_pid(
 // 输入、反馈单位 rad
 // 输出单位 rpm
 static Pid position_pid(
-    165.0f,
+    168.0f,
     0.0f,
     0.0f,
     50.0f,
@@ -52,6 +55,9 @@ volatile float debug_filtered_speed = 0.0f;
 volatile float debug_target_position = 0.0f;
 volatile float debug_actual_position = 0.0f;
 volatile float debug_position_output = 0.0f;
+
+// 新增：位置轨迹速度前馈，单位 rpm
+volatile float debug_velocity_feedforward = 0.0f;
 
 volatile uint32_t debug_control_tick = 0;
 
@@ -142,6 +148,7 @@ void ControlTaskRun(void)
     float target_speed = 0.0f;
     float target_position = 0.0f;
     float position_output = 0.0f;
+    float velocity_feedforward = 0.0f;
 
     if (control_mode == 0)
     {
@@ -152,18 +159,41 @@ void ControlTaskRun(void)
     }
     else
     {
-        // 正弦位置跟随
-        target_position =
-            POSITION_AMPLITUDE *
-            sinf(2.0f * PI * time / POSITION_PERIOD);
+        // 正弦轨迹相位
+        float phase =
+            2.0f * PI * time / POSITION_PERIOD;
 
-        // 位置外环输出目标速度 rpm
+        // 正弦位置目标，单位 rad
+        target_position =
+            POSITION_AMPLITUDE * sinf(phase);
+
+        // 位置外环反馈，输出单位 rpm
         position_output = position_pid.calc(
             target_position,
             actual_position
         );
 
-        target_speed = position_output;
+        // 新增：速度前馈
+        // rad/s 转换为 rpm
+        velocity_feedforward =
+            POSITION_AMPLITUDE *
+            (60.0f / POSITION_PERIOD) *
+            cosf(phase);
+
+        // 位置反馈 + 速度前馈
+        target_speed =
+            position_output + velocity_feedforward;
+
+        // 最终目标速度限幅
+        if (target_speed > POSITION_SPEED_LIMIT)
+        {
+            target_speed = POSITION_SPEED_LIMIT;
+        }
+
+        if (target_speed < -POSITION_SPEED_LIMIT)
+        {
+            target_speed = -POSITION_SPEED_LIMIT;
+        }
     }
 
     // 保留滤波计算，仅用于观察
@@ -189,10 +219,14 @@ void ControlTaskRun(void)
 
     // 电流限幅
     if (output > 1000.0f)
+    {
         output = 1000.0f;
+    }
 
     if (output < -1000.0f)
+    {
         output = -1000.0f;
+    }
 
     // Ozone 调试变量
     debug_time = time;
@@ -204,6 +238,7 @@ void ControlTaskRun(void)
     debug_target_position = target_position;
     debug_actual_position = actual_position;
     debug_position_output = position_output;
+    debug_velocity_feedforward = velocity_feedforward;
 
     // CAN 电流输出
     MotorSendCurrent(static_cast<int16_t>(output));
@@ -307,12 +342,16 @@ void ControlTaskInit(void)
         HAL_CAN_ConfigFilter(&hcan1, &filter);
 
     if (debug_can_filter != HAL_OK)
+    {
         return;
+    }
 
     debug_can_start = HAL_CAN_Start(&hcan1);
 
     if (debug_can_start != HAL_OK)
+    {
         return;
+    }
 
     debug_can_notify =
         HAL_CAN_ActivateNotification(
