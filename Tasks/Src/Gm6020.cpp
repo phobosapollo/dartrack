@@ -23,19 +23,21 @@ Gm6020::Gm6020(uint8_t id)
 {
 }
 
-uint32_t Gm6020::rxId() const
+uint32_t Gm6020::rxId() const  // 接收 ID
 {
-    return 0x204u + id_;
+    return 0x204u + id_;       // ID 为 1 的电机: 0x204+1=0x205
 }
 
-uint32_t Gm6020::txId() const
+uint32_t Gm6020::txId() const  // 发送 ID
 {
     // Current control protocol (to be verified)
     return (id_ <= 4) ? 0x1FEu : 0x2FEu;
 }
 
-void Gm6020::decode(const uint8_t *data)
+void Gm6020::decode(const uint8_t *data)  
+// 把电机通过 CAN 发回的 8 个字节，转换成角度、速度、电流和温度
 {
+    // 解析角度
     uint16_t raw = static_cast<uint16_t>(
         (static_cast<uint16_t>(data[0]) << 8) | data[1]
     );
@@ -47,6 +49,7 @@ void Gm6020::decode(const uint8_t *data)
     }
     else
     {
+        //实现多圈角度
         int32_t diff = static_cast<int32_t>(raw)
                      - static_cast<int32_t>(last_raw_angle_);
 
@@ -112,7 +115,7 @@ int16_t Gm6020::currentCommand() const
     return current_command_;
 }
 
-void Gm6020::encode(uint8_t *data) const
+void Gm6020::encode(uint8_t *data) const   // 把电流指令打包成 CAN 报文
 {
     // Caller must provide an 8-byte initialized buffer.
     // ID 1-4: DATA[0:1], [2:3], [4:5], [6:7]

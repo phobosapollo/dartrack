@@ -9,23 +9,23 @@
 constexpr float PI = 3.14159265358979323846f;
 
 // 速度正弦参数
-constexpr float SINE_AMPLITUDE = 50.0f;
+constexpr float SINE_AMPLITUDE = 250.0f;
 constexpr float SINE_PERIOD = 10.0f;
 
 // 位置正弦参数，单位 rad
 constexpr float POSITION_AMPLITUDE = 4.0f;
-constexpr float POSITION_PERIOD = 10.0f;
+constexpr float POSITION_PERIOD = 15.0f;
 
 // 位置环最终目标速度限幅，单位 rpm
 constexpr float POSITION_SPEED_LIMIT = 50.0f;
 
 // 0: 速度模式
 // 1: 位置模式
-volatile uint8_t control_mode = 1;
+volatile uint8_t control_mode = 0;
 
 // 速度环 PID
 static Pid speed_pid(
-    15.0f,
+    13.0f,
     0.0f,
     0.0f,
     1000.0f,
@@ -88,14 +88,14 @@ volatile uint32_t debug_can_rx_id = 0;
 volatile uint8_t debug_can_rx_data[8] = {0};
 volatile uint32_t debug_can_rx_error = 0;
 
-static volatile uint8_t control_pending = 0;
+static volatile uint8_t control_pending = 0;       // 变量只在当前源文件中可见，并且一直存在;告诉编译器，这个变量的值可能在程序正常执行流程之外发生变化，因此每次访问都应实际读取或写入
 
 void MotorSendCurrent(int16_t current);
 
 // TIM6 1kHz 调用
 void ControlTaskTick(void)
 {
-    static uint8_t tick_count = 0;
+    static uint8_t tick_count = 0;       // 保留上次调用后的值
 
     tick_count++;
 
@@ -117,7 +117,7 @@ void ControlTaskRun(void)
 
     control_pending = 0;
 
-    constexpr float dt = 0.01f;
+    constexpr float dt = 0.01f;      // 表示 dt 是一个可以在编译时确定的常量，不能在运行时修改
 
     static float time = 0.0f;
 
@@ -278,6 +278,7 @@ void MotorSendCurrent(int16_t current)
 
 void HAL_CAN_RxFifo0MsgPendingCallback(
     CAN_HandleTypeDef *hcan)
+// 负责从 CAN 接收 FIFO 中取出报文，包括 CAN ID 和 8 字节数据
 {
     if (hcan->Instance != CAN1)
     {
@@ -326,7 +327,7 @@ void ControlTaskInit(void)
     CAN_FilterTypeDef filter = {};
 
     filter.FilterBank = 0;
-    filter.FilterMode = CAN_FILTERMODE_IDMASK;
+    filter.FilterMode = CAN_FILTERMODE_IDMASK;     // 采用掩码过滤模式
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
 
     filter.FilterIdHigh = 0;
@@ -339,24 +340,24 @@ void ControlTaskInit(void)
     filter.SlaveStartFilterBank = 14;
 
     debug_can_filter =
-        HAL_CAN_ConfigFilter(&hcan1, &filter);
+        HAL_CAN_ConfigFilter(&hcan1, &filter);     // 配置接收过滤器
 
     if (debug_can_filter != HAL_OK)
     {
         return;
     }
 
-    debug_can_start = HAL_CAN_Start(&hcan1);
+    debug_can_start = HAL_CAN_Start(&hcan1);       // 启动 CAN 外设
 
-    if (debug_can_start != HAL_OK)
+    if (debug_can_start != HAL_OK)                 
     {
         return;
     }
 
     debug_can_notify =
-        HAL_CAN_ActivateNotification(
+        HAL_CAN_ActivateNotification(              // 使能 FIFO0 新消息通知
             &hcan1,
-            CAN_IT_RX_FIFO0_MSG_PENDING
+            CAN_IT_RX_FIFO0_MSG_PENDING            // 当 CAN 接收 FIFO0 中有新报文时，允许产生相应的中断通知
         );
 }
 
